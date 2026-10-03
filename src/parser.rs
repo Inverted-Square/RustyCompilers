@@ -24,8 +24,8 @@ mod byte_stream {
         }
     }
 
-    impl From<String> for ByteStream {
-        fn from(value: String) -> Self {
+    impl From<&str> for ByteStream {
+        fn from(value: &str) -> Self {
             value.as_bytes().into()
         }
     }
@@ -43,7 +43,7 @@ impl<T> Parser<T> {
         Self(Box::new(f))
     }
 
-    pub fn parse_str(self, src: String) -> Option<(T, String)> {
+    pub fn parse_str(self, src: &str) -> Option<(T, String)> {
         let (v, new_src) = self.parse(src.into())?;
         let new_src = String::from_utf8((*new_src).clone()).ok()?;
         Some((v, new_src))
@@ -97,10 +97,6 @@ mod monadic_parser {
     }
 
     impl<A: 'static> Monad<A> for Parser<A> {
-        fn ret(a: A) -> Self {
-            Self::pure(a)
-        }
-
         fn bind<B, F>(self, f: F) -> Parser<B>
         where
             F: FnOnce(A) -> Parser<B> + 'static,
