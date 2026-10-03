@@ -1,7 +1,6 @@
 #![allow(unused)]
 
 use crate::monadic_type_classes::Alternative;
-use crate::parser::Parser::P;
 use crate::parser::byte_stream::ByteStream;
 use std::ops::BitOr;
 
@@ -34,27 +33,24 @@ mod byte_stream {
 
 type Matcher<T> = dyn FnOnce(ByteStream) -> Option<(T, ByteStream)> + 'static;
 
-pub enum Parser<T> {
-    P(Box<Matcher<T>>),
-}
+pub struct Parser<T>(Box<Matcher<T>>);
 
 impl<T> Parser<T> {
     fn new<F>(f: F) -> Self
     where
         F: FnOnce(ByteStream) -> Option<(T, ByteStream)> + 'static,
     {
-        P(Box::new(f))
+        Self(Box::new(f))
     }
 
     pub fn parse_str(self, src: String) -> Option<(T, String)> {
-        let P(p) = self;
-        let (v, new_src) = p(src.into())?;
+        let (v, new_src) = self.parse(src.into())?;
         let new_src = String::from_utf8((*new_src).clone()).ok()?;
         Some((v, new_src))
     }
 
     fn parse(self, src: ByteStream) -> Option<(T, ByteStream)> {
-        let P(p) = self;
+        let Self(p) = self;
         p(src)
     }
 }
