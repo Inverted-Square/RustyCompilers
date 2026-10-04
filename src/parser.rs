@@ -1,59 +1,36 @@
 #![allow(unused)]
 
-use crate::monadic_type_classes::Alternative;
-use crate::parser::byte_stream::ByteStream;
+use crate::monadic_do;
+use crate::monadic_type_classes::{Alternative, Monad};
 use family_member_derive::FamilyMember;
 use std::ops::BitOr;
 
-mod byte_stream {
-    use std::ops::Deref;
-
-    #[derive(Clone)]
-    pub struct ByteStream(Vec<u8>);
-
-    impl Deref for ByteStream {
-        type Target = Vec<u8>;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-
-    impl From<&[u8]> for ByteStream {
-        fn from(value: &[u8]) -> Self {
-            Self(value.to_vec())
-        }
-    }
-
-    impl From<&str> for ByteStream {
-        fn from(value: &str) -> Self {
-            value.as_bytes().into()
-        }
-    }
-}
-
-type Matcher<T> = dyn FnOnce(ByteStream) -> Option<(T, ByteStream)> + 'static;
+type Matcher<T> = dyn FnOnce(&str) -> Option<(T, &str)>;
 
 #[derive(FamilyMember)]
 pub struct Parser<T>(Box<Matcher<T>>);
 
-impl<T> Parser<T> {
+impl<T: 'static> Parser<T> {
     fn new<F>(f: F) -> Self
     where
-        F: FnOnce(ByteStream) -> Option<(T, ByteStream)> + 'static,
+        F: FnOnce(&str) -> Option<(T, &str)> + 'static,
     {
         Self(Box::new(f))
     }
 
-    pub fn parse_str(self, src: &str) -> Option<(T, String)> {
-        let (v, new_src) = self.parse(src.into())?;
-        let new_src = String::from_utf8((*new_src).clone()).ok()?;
-        Some((v, new_src))
-    }
-
-    fn parse(self, src: ByteStream) -> Option<(T, ByteStream)> {
+    pub fn parse(self, src: &str) -> Option<(T, &str)> {
         let Self(p) = self;
         p(src)
+    }
+
+    pub fn satisfy<F>(self, cond: F) -> Self
+    where
+        F: Fn(&T) -> bool + 'static,
+    {
+        monadic_do! {
+            t <- self;
+            if cond(&t) { Parser::ret(t) } else { parsers::fail() }
+        }
     }
 }
 
@@ -62,7 +39,7 @@ mod monadic_parser {
     use crate::parser::Parser;
 
     impl<A: 'static> Functor<A> for Parser<A> {
-        fn fmap<B, F>(self, f: F) -> Parser<B>
+        fn fmap<B: 'static, F>(self, f: F) -> Parser<B>
         where
             F: FnOnce(A) -> B + 'static,
         {
@@ -75,7 +52,7 @@ mod monadic_parser {
             Parser::new(|src| Some((a, src)))
         }
 
-        fn apply<B, F>(self, pf: Parser<F>) -> Parser<B>
+        fn apply<B: 'static, F>(self, pf: Parser<F>) -> Parser<B>
         where
             F: FnOnce(A) -> B + 'static,
         {
@@ -87,7 +64,7 @@ mod monadic_parser {
     }
 
     impl<A: 'static> Monad<A> for Parser<A> {
-        fn bind<B, F>(self, f: F) -> Parser<B>
+        fn bind<B: 'static, F>(self, f: F) -> Parser<B>
         where
             F: FnOnce(A) -> Parser<B> + 'static,
         {
@@ -101,7 +78,7 @@ mod monadic_parser {
         }
 
         fn alternative(self, pa: Self) -> Self {
-            Parser::new(|src| self.parse(src.clone()).or_else(|| pa.parse(src)))
+            Parser::new(|src| self.parse(src).or_else(|| pa.parse(src)))
         }
     }
 }
@@ -115,17 +92,44 @@ impl<T: 'static> BitOr for Parser<T> {
 }
 
 pub mod parsers {
-    use crate::monadic_type_classes::Functor;
+    use crate::monadic_do;
+    use crate::monadic_type_classes::Monad;
     use crate::parser::Parser;
 
-    pub fn item() -> Parser<u8> {
-        Parser::new(|src| match src.as_slice() {
-            [] => None,
-            [head, tail @ ..] => Some((*head, tail.into())),
+    pub fn fail<A: 'static>() -> Parser<A> {
+        Parser::new(|_| None)
+    }
+
+    fn space() -> Parser<()> {
+        Parser::new(|src| Some(((), src.trim_start())))
+    }
+
+    fn item() -> Parser<char> {
+        Parser::new(|src| {
+            let head = src.chars().next()?;
+            let (_, tail) = src.split_at(1);
+            Some((head, tail))
         })
     }
 
-    pub fn item_char() -> Parser<char> {
-        item().fmap(|b| b as char)
+    fn text(s: &'static str) -> Parser<&'static str> {
+        Parser::new(move |src| {
+            let (parsed_s, new_src) = src.split_at_checked(s.len())?;
+            (s == parsed_s).then_some((s, new_src))
+        })
+    }
+
+    pub fn character(c: char) -> Parser<char> {
+        monadic_do! {
+            space();
+            item().satisfy(move |&parsed_c| parsed_c == c)
+        }
+    }
+
+    pub fn string(s: &'static str) -> Parser<&'static str> {
+        monadic_do! {
+            space();
+            text(s)
+        }
     }
 }

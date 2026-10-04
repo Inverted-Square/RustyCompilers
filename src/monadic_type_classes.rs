@@ -11,14 +11,14 @@ pub trait FamilyMember<T> {
 pub type SelfOfTU<T, U, V> = <<T as FamilyMember<U>>::Of as Family>::Member<V>;
 
 pub trait Functor<A>: FamilyMember<A> {
-    fn fmap<B, F>(self, f: F) -> SelfOfTU<Self, A, B>
+    fn fmap<B: 'static, F>(self, f: F) -> SelfOfTU<Self, A, B>
     where
         F: FnOnce(A) -> B + 'static;
 }
 
 pub trait Applicative<A>: Functor<A> {
     fn pure(a: A) -> Self;
-    fn apply<B, F>(self, pf: SelfOfTU<Self, A, F>) -> SelfOfTU<Self, A, B>
+    fn apply<B: 'static, F>(self, pf: SelfOfTU<Self, A, F>) -> SelfOfTU<Self, A, B>
     where
         F: FnOnce(A) -> B + 'static;
 }
@@ -31,7 +31,7 @@ pub trait Monad<A>: Applicative<A> {
         Self::pure(a)
     }
 
-    fn bind<B, F>(self, f: F) -> SelfOfTU<Self, A, B>
+    fn bind<B: 'static, F>(self, f: F) -> SelfOfTU<Self, A, B>
     where
         F: FnOnce(A) -> SelfOfTU<Self, A, B> + 'static;
 }
