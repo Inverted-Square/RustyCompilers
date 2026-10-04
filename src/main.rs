@@ -12,4 +12,16 @@ fn main() {
     if let Some(parsed_result2) = parsers::character(c).parse("\n \t hello, how are you") {
         println!("{parsed_result2:?}");
     }
+
+    if let Some(parsed_result3) = parsers::nat().parse("\n \t 0001234hi") {
+        println!("{parsed_result3:?}");
+    }
+
+    if let Some(parsed_result4) = parsers::boolean().parse("\n \t false0001234hi") {
+        println!("{parsed_result4:?}");
+    }
+
+    if let Some(parsed_result5) = parsers::boolean().parse("\n \t true0001234hi") {
+        println!("{parsed_result5:?}");
+    }
 }
