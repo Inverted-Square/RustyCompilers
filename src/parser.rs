@@ -2,6 +2,7 @@
 
 use crate::monadic_type_classes::Alternative;
 use crate::parser::byte_stream::ByteStream;
+use family_member_derive::FamilyMember;
 use std::ops::BitOr;
 
 mod byte_stream {
@@ -33,6 +34,7 @@ mod byte_stream {
 
 type Matcher<T> = dyn FnOnce(ByteStream) -> Option<(T, ByteStream)> + 'static;
 
+#[derive(FamilyMember)]
 pub struct Parser<T>(Box<Matcher<T>>);
 
 impl<T> Parser<T> {
@@ -56,20 +58,8 @@ impl<T> Parser<T> {
 }
 
 mod monadic_parser {
-    use crate::monadic_type_classes::{
-        Alternative, Applicative, Family, FamilyMember, Functor, Monad,
-    };
+    use crate::monadic_type_classes::{Alternative, Applicative, Functor, Monad};
     use crate::parser::Parser;
-
-    pub struct ParserFamily;
-
-    impl Family for ParserFamily {
-        type Member<T> = Parser<T>;
-    }
-
-    impl<T> FamilyMember<T> for Parser<T> {
-        type Of = ParserFamily;
-    }
 
     impl<A: 'static> Functor<A> for Parser<A> {
         fn fmap<B, F>(self, f: F) -> Parser<B>

@@ -1,0 +1,11 @@
+[package]
+name = "family-member-derive"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+syn = "3.0.6"
+quote = "1.0.47"
+
+[lib]
+proc-macro = true

@@ -13,3 +13,4 @@ unimplemented = "warn"
 unreachable = "warn"
 
 [dependencies]
+family-member-derive = { path = "family-member-derive" }
