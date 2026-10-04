@@ -107,6 +107,66 @@ impl<T: 'static, E> From<Result<T, E>> for Parser<T> {
     }
 }
 
+pub mod tam_grammar {
+    pub enum Program {
+        LetIn(Vec<Declaration>, Command),
+    }
+
+    pub enum Declaration {
+        VarDeclare(String, Type),
+        VarInit(String, Type, Expr),
+        Func(String, Vec<FuncParam>, Type, Expr),
+    }
+
+    pub enum Command {
+        VarAssign(String, Expr),
+        IfThenElse(Expr, Box<Command>, Box<Command>),
+        While(Expr, Box<Command>),
+        GetInt(i32),
+        PrintInt(Expr),
+        BeginEnd(Vec<Command>),
+    }
+
+    pub enum Type {
+        Int,
+        Bool,
+    }
+
+    pub enum Expr {
+        LitNat(u32),
+        LitBool(bool),
+        Var(String),
+        BinOp(BinOperator, Box<Expr>, Box<Expr>),
+        UnOp(UnOperator, Box<Expr>),
+        Conditional(Box<Expr>, Box<Expr>, Box<Expr>),
+        FuncApp(String, Vec<Expr>),
+    }
+
+    pub enum FuncParam {
+        Param(String, Type),
+    }
+
+    pub enum BinOperator {
+        Add,
+        Sub,
+        Mul,
+        Div,
+        LogAnd,
+        LogOr,
+        LT,
+        LE,
+        GT,
+        GE,
+        EQ,
+        NE,
+    }
+
+    pub enum UnOperator {
+        Minus,
+        LogNot,
+    }
+}
+
 pub mod parsers {
     use crate::monadic_do;
     use crate::monadic_type_classes::Monad;
