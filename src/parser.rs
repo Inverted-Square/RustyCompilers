@@ -1,9 +1,9 @@
 #![allow(unused)]
 
 use crate::monadic_do;
-use crate::monadic_type_classes::{Alternative, Monad};
+use crate::monadic_type_classes::{Alternative, Applicative, Functor, Monad};
 use family_member_derive::FamilyMember;
-use std::ops::BitOr;
+use std::ops::{BitOr, Shr};
 
 type Matcher<T> = dyn FnOnce(&str) -> Option<(T, &str)>;
 
@@ -36,7 +36,7 @@ impl<T: 'static> Parser<T> {
     {
         monadic_do! {
             t <- self;
-            if cond(&t) { Parser::ret(t) } else { parsers::fail() }
+            if cond(&t) { Parser::ret(t) } else { Parser::empty() }
         }
     }
 }
@@ -59,12 +59,12 @@ mod monadic_parser {
             Parser::new(|src| Some((a, src)))
         }
 
-        fn apply<B: 'static, F>(self, pf: Parser<F>) -> Parser<B>
+        fn apply<B: 'static, F>(self, mf: Parser<F>) -> Parser<B>
         where
             F: FnOnce(A) -> B + 'static,
         {
             Parser::new(|src| {
-                pf.parse(src)
+                mf.parse(src)
                     .and_then(|(f, new_src)| self.fmap(f).parse(new_src))
             })
         }
@@ -84,9 +84,17 @@ mod monadic_parser {
             Parser::new(|_| None)
         }
 
-        fn alternative(self, pa: Self) -> Self {
-            Parser::new(|src| self.parse(src).or_else(|| pa.parse(src)))
+        fn alternative(self, ma: Self) -> Self {
+            Parser::new(|src| self.parse(src).or_else(|| ma.parse(src)))
         }
+    }
+}
+
+impl<T: 'static> Shr for Parser<T> {
+    type Output = Parser<T>;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        self.sequence(rhs)
     }
 }
 
@@ -102,7 +110,7 @@ impl<T: 'static, E> From<Result<T, E>> for Parser<T> {
     fn from(value: Result<T, E>) -> Self {
         match value {
             Ok(val) => Parser::ret(val),
-            Err(_) => parsers::fail(),
+            Err(_) => Parser::empty(),
         }
     }
 }
@@ -169,12 +177,10 @@ pub mod tam_grammar {
 
 pub mod parsers {
     use crate::monadic_do;
-    use crate::monadic_type_classes::Monad;
+    use crate::monadic_type_classes::{Alternative, Monad};
     use crate::parser::Parser;
-
-    pub fn fail<A: 'static>() -> Parser<A> {
-        Parser::new(|_| None)
-    }
+    use crate::parser::tam_grammar::Expr::Conditional;
+    use crate::parser::tam_grammar::{Expr, Type};
 
     pub fn space() -> Parser<()> {
         Parser::new(|src| Some(((), src.trim_start())))
@@ -200,18 +206,59 @@ pub mod parsers {
         .token()
     }
 
-    pub fn nat() -> Parser<u32> {
+    pub fn string_satisfy<F>(f: F) -> Parser<String>
+    where
+        F: Fn(&char) -> bool + Clone + 'static,
+    {
         monadic_do! {
-            num_str <- nat_str().token();
-            num_str.parse().into()
+            c <- item().satisfy(f.clone());
+            rest <- string_satisfy(f) | Parser::ret(String::new());
+            return format!("{c}{rest}");
         }
     }
 
-    fn nat_str() -> Parser<String> {
+    pub fn identifier() -> Parser<String> {
         monadic_do! {
-            digit <- item().satisfy(|&c| "0123456789".contains(c));
-            digits <- nat_str() | Parser::ret(String::new());
-            return format!("{digit}{digits}");
+            c <- item().satisfy(|&c| c.is_ascii_alphabetic());
+            rest <- string_satisfy(|&c| c.is_ascii_alphanumeric()) | Parser::ret(String::new());
+            return format!("{c}{rest}");
+        }
+    }
+
+    pub fn tam_type() -> Parser<Type> {
+        let parse_type_int = monadic_do! {
+            string("int");
+            return Type::Int;
+        };
+        let parse_type_bool = monadic_do! {
+            string("bool");
+            return Type::Bool;
+        };
+        parse_type_int | parse_type_bool
+    }
+
+    pub fn expr() -> Parser<Expr> {
+        let parse_conditional = monadic_do! {
+            expr1 <- log_or();
+            character('?');
+            expr2 <- expr();
+            character(':');
+            expr3 <- expr();
+            return Conditional(Box::new(expr1), Box::new(expr2), Box::new(expr3));
+        };
+        parse_conditional | log_or()
+    }
+
+    pub fn log_or() -> Parser<Expr> {
+        monadic_do! {
+            Parser::empty()
+        }
+    }
+
+    pub fn nat() -> Parser<u32> {
+        monadic_do! {
+            num_str <- string_satisfy(|&c| c.is_ascii_digit()).token();
+            num_str.parse().into()
         }
     }
 

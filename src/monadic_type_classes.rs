@@ -18,7 +18,8 @@ pub trait Functor<A>: FamilyMember<A> {
 
 pub trait Applicative<A>: Functor<A> {
     fn pure(a: A) -> Self;
-    fn apply<B: 'static, F>(self, pf: SelfOfTU<Self, A, F>) -> SelfOfTU<Self, A, B>
+
+    fn apply<B: 'static, F>(self, mf: SelfOfTU<Self, A, F>) -> SelfOfTU<Self, A, B>
     where
         F: FnOnce(A) -> B + 'static;
 }
@@ -34,11 +35,20 @@ pub trait Monad<A>: Applicative<A> {
     fn bind<B: 'static, F>(self, f: F) -> SelfOfTU<Self, A, B>
     where
         F: FnOnce(A) -> SelfOfTU<Self, A, B> + 'static;
+
+    fn sequence<B: 'static>(self, mb: SelfOfTU<Self, A, B>) -> SelfOfTU<Self, A, B>
+    where
+        Self: Sized,
+        SelfOfTU<Self, A, B>: 'static,
+    {
+        self.bind::<B, _>(move |_| mb)
+    }
 }
 
 pub trait Alternative<A>: Applicative<A> {
     fn empty() -> Self;
-    fn alternative(self, pa: Self) -> Self;
+
+    fn alternative(self, ma: Self) -> Self;
 }
 
 #[macro_export]
