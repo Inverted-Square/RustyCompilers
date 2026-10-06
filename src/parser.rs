@@ -90,14 +90,6 @@ mod monadic_parser {
     }
 }
 
-impl<T: 'static> Shr for Parser<T> {
-    type Output = Parser<T>;
-
-    fn shr(self, rhs: Self) -> Self::Output {
-        self.sequence(rhs)
-    }
-}
-
 impl<T: 'static> BitOr for Parser<T> {
     type Output = Parser<T>;
 
@@ -140,6 +132,7 @@ pub mod tam_grammar {
         Bool,
     }
 
+    #[derive(Debug)]
     pub enum Expr {
         LitNat(u32),
         LitBool(bool),
@@ -154,6 +147,7 @@ pub mod tam_grammar {
         Param(String, Type),
     }
 
+    #[derive(Debug)]
     pub enum BinOperator {
         Add,
         Sub,
@@ -169,6 +163,7 @@ pub mod tam_grammar {
         NE,
     }
 
+    #[derive(Debug)]
     pub enum UnOperator {
         Minus,
         LogNot,
@@ -177,9 +172,10 @@ pub mod tam_grammar {
 
 pub mod parsers {
     use crate::monadic_do;
-    use crate::monadic_type_classes::{Alternative, Monad};
+    use crate::monadic_type_classes::Monad;
     use crate::parser::Parser;
-    use crate::parser::tam_grammar::Expr::Conditional;
+    use crate::parser::tam_grammar::BinOperator::LogOr;
+    use crate::parser::tam_grammar::Expr::{BinOp, Conditional, LitNat};
     use crate::parser::tam_grammar::{Expr, Type};
 
     pub fn space() -> Parser<()> {
@@ -251,8 +247,20 @@ pub mod parsers {
 
     pub fn log_or() -> Parser<Expr> {
         monadic_do! {
-            Parser::empty()
+            expr1 <- nat();
+            exprs <- many_log_or();
+            return exprs.into_iter().rfold(LitNat(expr1), |final_e, e| BinOp(LogOr, Box::new(final_e), Box::new(e)));
         }
+    }
+
+    fn many_log_or() -> Parser<Vec<Expr>> {
+        let many_expr = monadic_do! {
+            expr <- string("||").sequence(nat());
+            mut exprs <- many_log_or();
+            let () = exprs.push(LitNat(expr));
+            return exprs;
+        };
+        many_expr | Parser::ret(vec![])
     }
 
     pub fn nat() -> Parser<u32> {

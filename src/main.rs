@@ -24,4 +24,8 @@ fn main() {
     if let Some(parsed_result5) = parsers::boolean().parse("\n \t true0001234hi") {
         println!("{parsed_result5:?}");
     }
+
+    if let Some(parsed_result6) = parsers::expr().parse("1 ? 2\n\n ? 3 : 4 : 5 || 6 || 7") {
+        println!("{parsed_result6:?}");
+    }
 }
