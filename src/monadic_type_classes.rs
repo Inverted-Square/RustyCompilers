@@ -63,7 +63,7 @@ macro_rules! monadic_do {
     }};
 
     (_ <- $e:expr;$($r:tt)*) => {
-        $e.sequence(monadic_do!($($r)*))
+        $e.bind(move |_| monadic_do!($($r)*))
     };
 
     (mut $binding:ident <- $e:expr;$($r:tt)*) => {
@@ -75,7 +75,7 @@ macro_rules! monadic_do {
     };
 
     ($e:expr;$($r:tt)*) => {
-        $e.sequence(monadic_do!($($r)*))
+        $e.bind(move |_| monadic_do!($($r)*))
     };
 
     ($e:expr) => {

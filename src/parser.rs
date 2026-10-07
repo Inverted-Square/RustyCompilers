@@ -174,8 +174,8 @@ pub mod parsers {
     use crate::monadic_do;
     use crate::monadic_type_classes::Monad;
     use crate::parser::Parser;
-    use crate::parser::tam_grammar::BinOperator::LogOr;
-    use crate::parser::tam_grammar::Expr::{BinOp, Conditional, LitNat};
+    use crate::parser::expr_parsers::log_or;
+    use crate::parser::tam_grammar::Expr::Conditional;
     use crate::parser::tam_grammar::{Expr, Type};
 
     pub fn space() -> Parser<()> {
@@ -245,24 +245,6 @@ pub mod parsers {
         parse_conditional | log_or()
     }
 
-    pub fn log_or() -> Parser<Expr> {
-        monadic_do! {
-            expr1 <- nat();
-            exprs <- many_log_or();
-            return exprs.into_iter().rfold(LitNat(expr1), |final_e, e| BinOp(LogOr, Box::new(final_e), Box::new(e)));
-        }
-    }
-
-    fn many_log_or() -> Parser<Vec<Expr>> {
-        let many_expr = monadic_do! {
-            expr <- string("||").sequence(nat());
-            mut exprs <- many_log_or();
-            let () = exprs.push(LitNat(expr));
-            return exprs;
-        };
-        many_expr | Parser::ret(vec![])
-    }
-
     pub fn nat() -> Parser<u32> {
         monadic_do! {
             num_str <- string_satisfy(|&c| c.is_ascii_digit()).token();
@@ -280,5 +262,174 @@ pub mod parsers {
             return false;
         };
         parse_true | parse_false
+    }
+}
+
+mod expr_parsers {
+    use crate::monadic_do;
+    use crate::monadic_type_classes::{Functor, Monad};
+    use crate::parser::Parser;
+    use crate::parser::parsers::{boolean, character, expr, identifier, nat, string};
+    use crate::parser::tam_grammar::BinOperator::{
+        Add, Div, EQ, GE, GT, LE, LT, LogAnd, LogOr, Mul, NE, Sub,
+    };
+    use crate::parser::tam_grammar::Expr::{BinOp, FuncApp, LitBool, LitNat, UnOp, Var};
+    use crate::parser::tam_grammar::UnOperator::{LogNot, Minus};
+    use crate::parser::tam_grammar::{BinOperator, Expr};
+
+    pub fn log_or() -> Parser<Expr> {
+        monadic_do! {
+            expr0 <- log_and();
+            exprs <- many_log_or();
+            return exprs.into_iter().rfold(expr0, |final_e, e| BinOp(LogOr, Box::new(final_e), Box::new(e)));
+        }
+    }
+
+    fn many_log_or() -> Parser<Vec<Expr>> {
+        let many_expr = monadic_do! {
+            string("||");
+            expr <- log_and();
+            mut exprs <- many_log_or();
+            let () = exprs.push(expr);
+            return exprs;
+        };
+        many_expr | Parser::ret(vec![])
+    }
+
+    fn log_and() -> Parser<Expr> {
+        monadic_do! {
+            expr0 <- not();
+            exprs <- many_log_and();
+            return exprs.into_iter().rfold(expr0, |final_e, e| BinOp(LogAnd, Box::new(final_e), Box::new(e)));
+        }
+    }
+
+    fn many_log_and() -> Parser<Vec<Expr>> {
+        let many_expr = monadic_do! {
+            string("&&");
+            expr <- not();
+            mut exprs <- many_log_and();
+            let () = exprs.push(expr);
+            return exprs;
+        };
+        many_expr | Parser::ret(vec![])
+    }
+
+    fn not() -> Parser<Expr> {
+        let parse_not = monadic_do! {
+            character('!');
+            expr <- not();
+            return UnOp(LogNot, Box::new(expr));
+        };
+        parse_not | relational()
+    }
+
+    fn relational() -> Parser<Expr> {
+        monadic_do! {
+            expr0 <- add_sub();
+            exprs <- relational_many();
+            return exprs.into_iter().rfold(expr0, |final_e, (e, op)| BinOp(op, Box::new(final_e), Box::new(e)));
+        }
+    }
+
+    fn relational_many() -> Parser<Vec<(Expr, BinOperator)>> {
+        let many_expr = monadic_do! {
+            expr <- string("<=").sequence(add_sub()).fmap(|e| (e, LE)) |
+                    character('<').sequence(add_sub()).fmap(|e| (e, LT)) |
+                    string(">=").sequence(add_sub()).fmap(|e| (e, GE)) |
+                    character('>').sequence(add_sub()).fmap(|e| (e, GT)) |
+                    string("==").sequence(add_sub()).fmap(|e| (e, EQ)) |
+                    string("!=").sequence(add_sub()).fmap(|e| (e, NE));
+            mut exprs <- relational_many();
+            let () = exprs.push(expr);
+            return exprs;
+        };
+        many_expr | Parser::ret(vec![])
+    }
+
+    fn add_sub() -> Parser<Expr> {
+        monadic_do! {
+            expr0 <- mul_div();
+            exprs <- add_sub_many();
+            return exprs.into_iter().rfold(expr0, |final_e, (e, op)| BinOp(op, Box::new(final_e), Box::new(e)));
+        }
+    }
+
+    fn add_sub_many() -> Parser<Vec<(Expr, BinOperator)>> {
+        let many_expr = monadic_do! {
+            expr <- character('+').sequence(mul_div()).fmap(|e| (e, Add)) |
+                    character('-').sequence(mul_div()).fmap(|e| (e, Sub));
+            mut exprs <- add_sub_many();
+            let () = exprs.push(expr);
+            return exprs;
+        };
+        many_expr | Parser::ret(vec![])
+    }
+
+    fn mul_div() -> Parser<Expr> {
+        monadic_do! {
+            expr0 <- term();
+            exprs <- mul_div_many();
+            return exprs.into_iter().rfold(expr0, |final_e, (e, op)| BinOp(op, Box::new(final_e), Box::new(e)));
+        }
+    }
+
+    fn mul_div_many() -> Parser<Vec<(Expr, BinOperator)>> {
+        let many_expr = monadic_do! {
+            expr <- character('*').sequence(term()).fmap(|e| (e, Mul)) |
+                    character('/').sequence(term()).fmap(|e| (e, Div));
+            mut exprs <- mul_div_many();
+            let () = exprs.push(expr);
+            return exprs;
+        };
+        many_expr | Parser::ret(vec![])
+    }
+
+    fn term() -> Parser<Expr> {
+        let parse_nat = nat().fmap(LitNat);
+        let parse_bool = boolean().fmap(LitBool);
+        let parse_ident = identifier().fmap(Var);
+        parse_nat | parse_bool | func_app() | parse_ident | minus() | brackets()
+    }
+
+    fn func_app() -> Parser<Expr> {
+        monadic_do! {
+            ident <- identifier();
+            character('(');
+            arg0 <- expr();
+            mut args <- many_args();
+            let () = args.push(arg0);
+            let () = args.reverse();
+            character(')');
+            return FuncApp(ident, args);
+        }
+    }
+
+    fn many_args() -> Parser<Vec<Expr>> {
+        let many_expr = monadic_do! {
+            character(',');
+            expr <- expr();
+            mut exprs <- many_args();
+            let () = exprs.push(expr);
+            return exprs;
+        };
+        many_expr | Parser::ret(vec![])
+    }
+
+    fn minus() -> Parser<Expr> {
+        monadic_do! {
+            character('-');
+            expr <- term();
+            return UnOp(Minus, Box::new(expr));
+        }
+    }
+
+    fn brackets() -> Parser<Expr> {
+        monadic_do! {
+            character('(');
+            expr <- expr();
+            character(')');
+            return expr;
+        }
     }
 }

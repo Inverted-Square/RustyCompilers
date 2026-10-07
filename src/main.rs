@@ -13,19 +13,19 @@ fn main() {
         println!("{parsed_result2:?}");
     }
 
-    if let Some(parsed_result3) = parsers::nat().parse("\n \t 0001234hi") {
+    if let Some(parsed_result3) = parsers::expr().parse("13 + (13 / 6 + 7) * 2 - -2") {
         println!("{parsed_result3:?}");
     }
 
-    if let Some(parsed_result4) = parsers::boolean().parse("\n \t false0001234hi") {
+    if let Some(parsed_result4) = parsers::expr().parse(
+        "12 <= 3 ?
+    1 + 3
+:
+    (17) - 10 / 2 != 11 ?
+        (4 - -2) * 7
+    :
+        !(8 > 8)",
+    ) {
         println!("{parsed_result4:?}");
-    }
-
-    if let Some(parsed_result5) = parsers::boolean().parse("\n \t true0001234hi") {
-        println!("{parsed_result5:?}");
-    }
-
-    if let Some(parsed_result6) = parsers::expr().parse("1 ? 2\n\n ? 3 : 4 : 5 || 6 || 7") {
-        println!("{parsed_result6:?}");
     }
 }
